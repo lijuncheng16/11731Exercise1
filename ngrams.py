@@ -12,7 +12,7 @@ from collections import Counter, OrderedDict, defaultdict, deque
 
 """
 @description    n-grams, perplexity, and perplexity-based classification
-@author         Favian Contreras <fnc4@cornell.edu>
+@Author: Billy Li (junchenl@andrew.cmu.edu)
 """
 
 
