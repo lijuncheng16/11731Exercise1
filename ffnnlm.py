@@ -22,7 +22,7 @@ class nnlm:
         b_s = self.model.add_parameters((len(self.wids)))
 
     def read_corpus(self, file):
-        print file
+        #print file
         f = open(file)
         self.data_array_train = []
         for line in f:
@@ -198,9 +198,9 @@ if __name__ == "__main__":
     lm = nnlm()
     train_dict, wids = lm.read_corpus('./en-de/valid.en-de.de')
     #train_dict,wids = lm.read_corpus('txt.done.data')
-    print wids
+    #print wids
     data = train_dict.items()
-    print data
+    #print data
     # Define the hyperparameters
     #N = 3
     #EVAL_EVERY = 10
@@ -211,34 +211,34 @@ if __name__ == "__main__":
     trainer = dy.SimpleSGDTrainer(model)
 
     best_score = None
-    token_count = sent_count = cum_loss = cum_perplexity = 0.0
+    token_count = sent_count = total_loss = cum_perplexity = 0.0
     sample_num = 0
     import time
     _start = time.time()
     print_flag = 0
-    print time.time()
+    print 'Start Time: ',time.time()
   
     # Training
     for epoch in range(10000):
         random.shuffle(data)
         if print_flag == 1:
             print epoch, sample_num, " " , trainer.status(), 
-            print "L: ", cum_loss / token_count,
-            print "P: ", math.exp(cum_loss / token_count),
-            print "T: ", ( time.time() - _start)
+            print "Average Loss ", total_loss / token_count,
+            print "Expectation: ", math.exp(total_loss / token_count),
+            print "Time: ", ( time.time() - _start)
         _start = time.time()
         losses = lm.build_nnlm_graph(data)
         #print _start
         gen_losses = losses.vec_value()
         #print gen_losses
         loss = dy.sum_batches(losses)
-        cum_loss += loss.value()
+        total_loss += loss.value()
         cum_perplexity += math.exp(gen_losses[0]/ len(data))
         token_count += len(data)
         #sent_count += len(sents)
   
         loss.backward()
-        trainer.update(0.1)
+        trainer.update()
         sample_num += len(data)
         trainer.update_epoch(1)
         print_flag = 1
