@@ -1,12 +1,13 @@
-from collections import defaultdict
+import nltk
 import dynet as dy
-import numpy as np
+import time
+import math
+start = time.time()
 import random
-import sys
+from dynet import *
+from util import CorpusReader
 
-
-
-class Attention_Batch:
+class Attention:
 
     def __init__(self, src_vocab_size, tgt_vocab_size, model, state_dim, embed_size, src_lookup, tgt_lookup, minibatch_size, builder=dy.LSTMBuilder):
         self.model = model
@@ -19,11 +20,11 @@ class Attention_Batch:
         self.tgt_vocab_size = tgt_vocab_size
         self.attention_size = 32
         self.minibatch_size = minibatch_size
-       
+
         self.enc_fwd_lstm = dy.LSTMBuilder(self.layers, self.embed_size, self.state_size, model)
         self.enc_bwd_lstm = dy.LSTMBuilder(self.layers, self.embed_size,self.state_size, model)
         self.dec_lstm = dy.LSTMBuilder(self.layers, self.state_size*2 + self.embed_size,  self.state_size, model)
-       
+
         self.input_lookup = src_lookup
         self.output_lookup = tgt_lookup
         self.attention_w1 = model.add_parameters( (self.attention_size, self.state_size*2))
@@ -46,7 +47,7 @@ class Attention_Batch:
             out_vectors.append(out_vector)
         return out_vectors 
 
-    ## I am just gonna loop over them
+     ## I am just gonna loop over them
     def run_lstm_batch(self, init_state, input_vecs_batch):
         out_vectors_array = []
         for input_vecs in input_vecs_batch:
@@ -160,8 +161,7 @@ class Attention_Batch:
             if next_word == 2:
                 count_EOS += 1
                 continue
-            res.append(next_word) 
-
+            res.append(next_word)
             #out += int2char[next_word]
         return res
 
@@ -208,19 +208,20 @@ class Attention_Batch:
             vector = [dy.concatenate(list(p)) for p in zip(fwd_vector, bwd_vector)]
             vectors_batch.append(vector)   
         return vectors_batch
-
-def main():
-    src_filename = '../data/en-de/train.en-de.low.de'
-    tgt_filename = '../data/en-de/train.en-de.low.en'
+    
+    
+if __name__ == "__main__":
+    src_filename = './en-de/train.en-de.low.de'
+    tgt_filename = './en-de/train.en-de.low.en'
     #filename = '../../../../dynet-base/dynet/examples/python/written.txt'
     #filename = 'txt.done.data'
 
-    src_filename_test = '../data/en-de/test.en-de.low.de'
-    tgt_filename_test = '../data/en-de/test.en-de.low.en'
-
-    cr = CR()
-    src_wids = cr.read_corpus_word(src_filename, 0)
-    tgt_wids = cr.read_corpus_word(tgt_filename, 0)
+    src_filename_test = './en-de/test.en-de.low.de'
+    tgt_filename_test = './en-de/test.en-de.low.en'
+    reader = CorpusReader()
+    print "we are here debugging..."
+    src_wids = reader.read_corpus_word(src_filename, 0)
+    tgt_wids = reader.read_corpus_word(tgt_filename, 0)
     src_i2w = {i:w for w,i in src_wids.iteritems()}
     tgt_i2w = {i:w for w,i in tgt_wids.iteritems()}
 
@@ -237,29 +238,29 @@ def main():
     tgt_lookup = model.add_lookup_parameters((len(tgt_wids), embedding_dim))
     builder = LSTMBuilder
     minibatch_size = 32
-    aed_b =  AED_B(len(src_wids), len(tgt_wids),  model, input_dim, embedding_dim, src_lookup, tgt_lookup, minibatch_size, builder)
+    aed_b =  Attention(len(src_wids), len(tgt_wids),  model, input_dim, embedding_dim, src_lookup, tgt_lookup, minibatch_size, builder)
 
     def get_indexed(arr, src_flag):
         ret_arr = []
         for a in arr:
-        #print a, wids[a], M[wids[a]].value()
-        if src_flag == 1:
-            ret_arr.append(src_wids[a])
-        else:
-            ret_arr.append(tgt_wids[a])
-            return ret_arr  
+            #print a, wids[a], M[wids[a]].value()
+            if src_flag == 1:
+                ret_arr.append(src_wids[a])
+            else:
+                ret_arr.append(tgt_wids[a])
+        return ret_arr  
 
-            def get_indexed_batch(sentence_array):
-                ret_ssent_arr = []
-                ret_tsent_arr  = []
-                words_mb = 0
-                for ssent,tsent in sentence_array:
-        #print sent
-        ar_s = get_indexed(ssent.split(),1)
-        ret_ssent_arr.append(ar_s)
-        ar = get_indexed(tsent.split(),0)
-        ret_tsent_arr.append(ar)
-        words_mb += len(ar_s)
+    def get_indexed_batch(sentence_array):
+        ret_ssent_arr = []
+        ret_tsent_arr  = []
+        words_mb = 0
+        for ssent,tsent in sentence_array:
+            #print sent
+            ar_s = get_indexed(ssent.split(),1)
+            ret_ssent_arr.append(ar_s)
+            ar = get_indexed(tsent.split(),0)
+            ret_tsent_arr.append(ar)
+            words_mb += len(ar_s)
         return ret_ssent_arr, ret_tsent_arr, words_mb  
 
 
@@ -272,11 +273,11 @@ def main():
         line = line.strip()
         src_sentences.append( '<s>' + ' ' + line + ' ' + '</s>')
 
-        tgt_sentences  = []
-        f = open(tgt_filename)
-        for  line in f:
-            line = line.strip()
-            tgt_sentences.append( '<s>' + ' ' + line + ' ' + '</s>')
+    tgt_sentences  = []
+    f = open(tgt_filename)
+    for  line in f:
+        line = line.strip()
+        tgt_sentences.append( '<s>' + ' ' + line + ' ' + '</s>')
 
     # Batch the training data ##############################################
     # Sort
@@ -296,75 +297,73 @@ def main():
         loss = 0
         c = 1
         for sentence_id in train_order:
-      #print "Processing ", sentence
-      #sentence = train_order[sentence_id]
-      #sentence = sentence.split() 
-      #if len(sentence) > 2:  
-        #print "This is a valid sentence"
-        if 3 > 2:  
-        #print "This is a valid sentence"
-        c = c+1
-        print c, " out of ", len(train_order)
-        if c%250 == 1:
-        #     #print "I will print trainer status now"
-        trainer.status()
-        print "Loss: ", loss / words
-        print "Perplexity: ", math.exp(loss / words)
-        print ("time: %r" % (time.time() - start))
-        for jj in range(minibatch_size):
-            sentence_id = jj + test_order[0]
-            isents, idurs, words_minibatch_indexing = get_indexed_batch(sentences[sentence_id:sentence_id+minibatch_size])
-            src,tgt = sentences[sentence_id]
-            resynth = aed_b.generate(src)
-            tgt_resynth = " ".join([tgt_i2w[c] for c in resynth]).strip()
-            BLEUscore = nltk.translate.bleu_score.sentence_bleu([src], tgt_resynth)
-            print "BLEU: ", BLEUscore
-             #isent = get_indexed(src_sentence, 1)
-             #itype = get_indexed(tgt_sentence,0)
-             #resynth= red.generate(isent)
+            #print "Processing ", sentence
+            #sentence = train_order[sentence_id]
+            #sentence = sentence.split() 
+            #if len(sentence) > 2:  
+            #print "This is a valid sentence"
+            if 3 > 2:  
+                #print "This is a valid sentence"
+                c = c+1
+                print c, " out of ", len(train_order)
+                if c%250 == 1:
+                    ##print "I will print trainer status now"
+                    trainer.status()
+                    print "Loss: ", loss / words
+                    print "Perplexity: ", math.exp(loss / words)
+                    print ("time: %r" % (time.time() - start))
+                    for jj in range(minibatch_size):
+                        sentence_id = jj + test_order[0]
+                        isents, idurs, words_minibatch_indexing = get_indexed_batch(sentences[sentence_id:sentence_id+minibatch_size])
+                        src,tgt = sentences[sentence_id]
+                        resynth = aed_b.generate(src)
+                        tgt_resynth = " ".join([tgt_i2w[c] for c in resynth]).strip()
+                        BLEUscore = nltk.translate.bleu_score.sentence_bleu([src], tgt_resynth)
+                        print "BLEU: ", BLEUscore
+                    #isent = get_indexed(src_sentence, 1)
+                    #itype = get_indexed(tgt_sentence,0)
+                    #resynth= red.generate(isent)
 
-             #resythn = red.sample(nchars= len(sentence),stop=wids["</s>"])
-             #print(" ".join([tgt_i2w[c] for c in resynth]).strip())
-             #print '\n'
-             #durs = durs[0:5]
-             #hypothesis = resynth
-             #reference = itype
-             #BLEUscore = nltk.translate.bleu_score.sentence_bleu([reference], hypothesis)
-             #print "BLEU: ", BLEUscore
+                    #resythn = red.sample(nchars= len(sentence),stop=wids["</s>"])
+                    #print(" ".join([tgt_i2w[c] for c in resynth]).strip())
+                    #print '\n'
+                    #durs = durs[0:5]
+                    #hypothesis = resynth
+                    #reference = itype
+                    #BLEUscore = nltk.translate.bleu_score.sentence_bleu([reference], hypothesis)
+                    #print "BLEU: ", BLEUscore
 
-             #BLEUscore = nltk.translate.bleu_score.sentence_bleu([reference], hypothesis)
-             #print "BLEU: ", BLEUscore
+                    #BLEUscore = nltk.translate.bleu_score.sentence_bleu([reference], hypothesis)
+                    #print "BLEU: ", BLEUscore
 
-        #     #print dloss / words
-        #     loss = 0
-        #     words = 0
-        #     dloss = 0
-        #     for _ in range(1):
-       #         print ' '.join(k for k in sentence)
-        #         samp = red.sample(nchars= len(sentence),stop=wids["</s>"])
-        #         res = red.generate(get_indexed(sentence))
-        #         print(" ".join([i2w[c] for c in res]).strip())
-        
-        #words += len(sentence) - 1
-        isents, idurs, words_minibatch_indexing = get_indexed_batch(sentences[sentence_id:sentence_id+minibatch_size])
-        
-        #print isent
-        #print "I will try to calculate error now"
-        error, words_minibatch_loss = aed_b.get_loss_batch(isents,idurs)
-        ####### I need to fix this sometime
-        #print words_minibatch_indexing , words_minibatch_loss
-        #assert words_minibatch_indexing == words_minibatch_loss
-        words += words_minibatch_indexing
-        #print "Obtained loss ", error.value()
-        loss += error.value()
-        #print "Added error"
-        #print error.value()
-        error.backward()
-        trainer.update(1.0)
-        print '\n'   
-        print("ITER",epoch,loss)
-        print '\n'
-        trainer.status()
-        trainer.update_epoch(1)
+                #     #print dloss / words
+                #     loss = 0
+                #     words = 0
+                #     dloss = 0
+                #     for _ in range(1):
+                # 	     print ' '.join(k for k in sentence)
+                #         samp = red.sample(nchars= len(sentence),stop=wids["</s>"])
+                #         res = red.generate(get_indexed(sentence))
+                #         print(" ".join([i2w[c] for c in res]).strip())
 
-if __name__ == '__main__': main()
+                #words += len(sentence) - 1
+                isents, idurs, words_minibatch_indexing = get_indexed_batch(sentences[sentence_id:sentence_id+minibatch_size])
+
+                #print isent
+                #print "I will try to calculate error now"
+                error, words_minibatch_loss = aed_b.get_loss_batch(isents,idurs)
+                ####### I need to fix this sometime
+                #print words_minibatch_indexing , words_minibatch_loss
+                #assert words_minibatch_indexing == words_minibatch_loss
+                words += words_minibatch_indexing
+                #print "Obtained loss ", error.value()
+                loss += error.value()
+                #print "Added error"
+                #print error.value()
+                error.backward()
+                trainer.update(1.0)
+            print '\n'   
+            print("ITER",epoch,loss)
+            print '\n'
+            trainer.status()
+            trainer.update_epoch(1)
